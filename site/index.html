@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>DailyDairy Activation</title>
+<!-- Support page for DailyDairy activation codes. The activation key below is encrypted
+     (AES-256-GCM, key from the support password with PBKDF2-SHA256, 600 000 rounds).
+     Without the support password this page cannot make codes. -->
+<style>
+  :root { --bg:#0f1513; --card:#17201d; --text:#e8efec; --muted:#9fb0aa; --brand:#7fd6bd; --brand-ink:#06372b; --err:#ff9a8a; --line:#2a3632; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f4f7f6; --card:#fff; --text:#13201c; --muted:#5b6b66; --brand:#0f7a5f; --brand-ink:#fff; --err:#b3261e; --line:#d9e2df; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:440px; margin:0 auto; padding:32px 16px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; letter-spacing:.04em; text-transform:uppercase; }
+  input[type=text], input[type=password] { width:100%; font:600 22px/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing:.1em;
+          padding:14px; border-radius:12px; border:1px solid var(--line); background:transparent; color:var(--text); }
+  #id { text-transform:uppercase; }
+  input:focus { outline:2px solid var(--brand); border-color:transparent; }
+  .row { display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--muted); font-size:14px; }
+  .out { margin-top:20px; text-align:center; }
+  .code { font:700 44px/1.1 ui-monospace, Menlo, Consolas, monospace; letter-spacing:.16em; color:var(--brand); min-height:50px; }
+  .hint { font-size:14px; color:var(--muted); min-height:21px; margin-top:8px; }
+  .err { color:var(--err); }
+  button { margin-top:16px; width:100%; padding:14px; border:0; border-radius:12px; background:var(--brand); color:var(--brand-ink); font:600 16px system-ui, sans-serif; cursor:pointer; }
+  button:disabled { opacity:.4; cursor:default; }
+  .link { background:none; color:var(--muted); text-decoration:underline; padding:8px; margin-top:8px; font-weight:400; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DailyDairy activation</h1>
+
+  <section id="locked">
+    <p>For the DailyDairy support team. Enter the support password to start.</p>
+    <form class="card" id="unlockForm">
+      <label for="pw">Support password</label>
+      <input id="pw" type="password" autocomplete="current-password" autocapitalize="characters" spellcheck="false">
+      <label class="row"><input id="remember" type="checkbox" checked> Remember on this device</label>
+      <div class="hint" id="pwHint"></div>
+      <button id="unlock" type="submit">Unlock</button>
+    </form>
+  </section>
+
+  <section id="ready" hidden>
+    <p>Type the install code the customer sent. Reply with the 6-digit activation code below.</p>
+    <div class="card">
+      <label for="id">Install code</label>
+      <input id="id" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="XXXX-XXXX">
+      <div class="out">
+        <div class="code" id="code"></div>
+        <div class="hint" id="hint">8 letters or digits, like ABCD-2345</div>
+      </div>
+      <button id="copy" disabled>Copy activation code</button>
+    </div>
+    <button class="link" id="lock">Lock this device</button>
+  </section>
+</main>
+<script>
+const SEALED = { salt: "ABTC8PQJhfsl8+LIJ6Q2OQ==", iv: "C/jyqctotn5wvgrf", data: "cQnTr92SKMw7uRoHASJZhBahEvuaYpXj+HFB4Sa2kO9AvtiRsi922j3cDGYIxrUiqGfW/JD65obNP/jWtpc8AZUbYPsuLm/avcnjdNCZUEk=", rounds: 600000 };
+const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const STORE = "dailydairy-activation-key";
+const $ = id => document.getElementById(id);
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const hexToBytes = h => new Uint8Array(h.match(/../g).map(b => parseInt(b, 16)));
+const normalize = s => s.toUpperCase().split("").filter(c => ALPHABET.includes(c)).join("");
+let hmacKey = null;
+
+function store(op, value) { try { return op === "get" ? localStorage.getItem(STORE) : op === "set" ? localStorage.setItem(STORE, value) : localStorage.removeItem(STORE); } catch (e) { return null; } }
+
+async function openSealed(password) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password.trim().toUpperCase()), "PBKDF2", false, ["deriveKey"]);
+  const aes = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64(SEALED.salt), iterations: SEALED.rounds, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(SEALED.iv) }, aes, b64(SEALED.data));
+  return new TextDecoder().decode(plain);
+}
+
+async function useKey(hex) {
+  hmacKey = await crypto.subtle.importKey("raw", hexToBytes(hex), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  $("locked").hidden = true; $("ready").hidden = false; $("id").focus();
+}
+
+async function activationCode(id) {
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode("DailyDairy-activate-v1:" + id)));
+  const v = ((sig[0] & 0x7f) << 24) | (sig[1] << 16) | (sig[2] << 8) | sig[3];
+  return String(v % 1000000).padStart(6, "0");
+}
+
+$("unlockForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const pw = $("pw").value;
+  if (!pw.trim()) return;
+  $("unlock").disabled = true; $("pwHint").className = "hint"; $("pwHint").textContent = "Checking…";
+  try {
+    const hex = await openSealed(pw);
+    if ($("remember").checked) store("set", hex);
+    $("pw").value = ""; $("pwHint").textContent = "";
+    await useKey(hex);
+  } catch (err) {
+    $("pwHint").className = "hint err"; $("pwHint").textContent = "Wrong password.";
+  } finally { $("unlock").disabled = false; }
+});
+
+async function update() {
+  const raw = $("id").value, compact = raw.replace(/[-\s]/g, ""), id = normalize(compact);
+  $("copy").disabled = true; $("code").textContent = ""; $("hint").className = "hint";
+  if (!compact) { $("hint").textContent = "8 letters or digits, like ABCD-2345"; return; }
+  if (id.length !== compact.length || id.length > 8) { $("hint").className = "hint err"; $("hint").textContent = "Check the code: 8 characters, no 0, O, 1, I or L"; return; }
+  if (id.length < 8) { $("hint").textContent = (8 - id.length) + " more character(s)"; return; }
+  $("code").textContent = await activationCode(id);
+  $("hint").textContent = "For install code " + id.slice(0, 4) + "-" + id.slice(4);
+  $("copy").disabled = false;
+}
+$("id").addEventListener("input", update);
+$("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("code").textContent); $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy activation code", 1500); }
+  catch (e) { $("copy").textContent = "Select and copy the code above"; }
+});
+$("lock").addEventListener("click", () => { store("remove"); hmacKey = null; $("id").value = ""; update(); $("ready").hidden = true; $("locked").hidden = false; });
+
+if (!window.crypto || !crypto.subtle) {
+  $("pwHint").className = "hint err"; $("pwHint").textContent = "This browser cannot make codes. Open the page in Chrome."; $("unlock").disabled = true;
+} else {
+  const saved = store("get");
+  if (saved && /^[0-9a-f]{64}$/.test(saved)) useKey(saved).catch(() => store("remove"));
+}
+</script>
+</body>
+</html>
